@@ -1,102 +1,206 @@
-proc diffusion {axis abeg aend nT com_on} {
-
-  set sel [atomselect top "name OH2"]
-  set sel0 [atomselect top "name OH2"]
-  set nummol [$sel num]
-  	
-  #--------------Compute MSD for each time window, append results and average--------#
-  set MSD [veccreate $nT]
-  set nw [expr {($aend-$abeg)/$nT}] 
-  set norm [expr {$nummol*$nw}]
-  set ax_name [axname $axis]
-  if {$com_on == 1} {
-      puts "com_on"
-      for {set j $abeg} {$j<$aend} {incr j $nT} {
-        $sel0 frame $j
-        $sel0 update
-        $sel frame $j
-        $sel update
-        set coms0 [measure center $sel0 weight mass]
-        # set coms0_xy [list [lindex $coms0  0] [lindex $coms0 1]]	
-        set com0 [lindex $coms0 $axis]
-        set coords0 [$sel0 get $ax_name]
-	puts "init center of mass, coords set"
-        # set coords0 [$sel0 get {x y}]
-        set sdlist {}
-        for {set i 0} {$i<$nT} {incr i} {
-  		$sel frame [expr {$j + $i}]
-  		# $sel update
-  		set coms [measure center $sel weight mass]
-  		# set coms_xy [list [lindex $coms 0] [lindex $coms 1]]
-  		set com [lindex $coms $axis]
-  		set coords [$sel get $ax_name]
-		puts "new center of mass, coords set"
-  		# set coords [$sel get {x y}]
-  		set sd 0
-  		for {set k 0} {$k < $nummol} {incr k} {
-  			set rt0t [expr {[lindex $coords $k] - $com}]
-  			# set rt0t [expr {[veclength [vecsub [lindex $coords $k] $coms_xy]]}]
-  			set rt0 [expr {[lindex $coords0 $k] - $com0}]
-  			# set rt0 [expr {[veclength [vecsub [lindex $coords0 $k] $coms0_xy]]}]
-  			set d [expr {$rt0t - $rt0}]
-  			set sd [expr {$sd + $d*$d}]
-  		}
-  		lappend sdlist $sd
-		puts "sd appended"
+#--------------Procedure to find largest absolute value of minmax result---------------#
+proc absmax {mm} {
+	set max0 0
+	for {set comp 0} {$comp < 2} {incr comp} {
+		for {set subc 0} {$subc < 3} {incr subc} {
+			set val [lindex [lindex $mm $comp] $subc]
+			set abv [expr abs($val)]
+			if {$abv > $max0} {set max0 $abv}
+		}
 	}
-	puts $sdlist
-	puts $MSD
-	set MSD [vecadd $MSD $sdlist]
-	puts "sd added to MSD"
-      }
-  } else {
-      for {set j $abeg} {$j<=$aend} {incr j $nT} {
-	$sel0 frame $j
-	$sel0 update
-	$sel frame $j
-	$sel update
-	set coords0 [$sel0 get $ax_name]
-	set sdlist {}
-	for {set i 0} {$i<$nT} {incr i} {
-	  $sel frame [expr {$j + $i}]
-  	  set coords [$sel get $ax_name]
-  	  set sd 0
-  	  for {set k 0} {$k < $nummol} {incr k} {
-  		  set rt0t [expr {[lindex $coords $k]}]
-  		  set rt0 [expr {[lindex $coords0 $k]}]
-  		  set d [expr {$rt0t - $rt0}]
-  		  set sd [expr {$sd + $d*$d}]
-  	  }
-  	  lappend sdlist $sd
-  	}
-  	set MSD [vecadd $MSD $sdlist]
-      }
-  }
-  set MSD [vecscale $MSD [expr {1.0/$norm}]]
-  puts "MSD scaled"
-  return $MSD
+	return $max0
 }
 
-#--------------Procedure to create numeric vector of length dim--------#
-  proc veccreate {dim} {
-    set v {}
-    for {set i 0} {$i < $dim} {incr i} {
-  	lappend v 0
-    }
-    return $v
-  }
-  
+#--------------Procedure to create empty list of lists of size d-----------------------#
+proc eveccreate {d} {
+	set vec {}
+	for {set dim 0} {$dim < $d} {incr dim} {
+		lappend vec {}
+	}
+	return $vec
+}
 
-#-------------Procedure to convert ax_name input to ax_name string------------#
-proc axname {axis} {
-  if {$axis==0} {
-    set ax_name "x"
-    return $ax_name
-  } elseif {$axis==1} {
-    set ax_name "y"
-    return $ax_name
-  } else {
-  set ax_name "z"
-  return $ax_name
+#--------------Main diffusion calculation (shelled by distance to protein)-------------#
+source diffusion_new1.tcl
+source align.tcl
+source gen_shells.tcl
+package require pbctools
+
+proc standardError {Li L} {
+  set n [llength $Li]
+  set stdv 0
+  foreach x $Li {
+    set var [expr pow($x-$L,2)]
+    set stdv [expr $stdv + $var]
   }
-}  
+  set stdv [expr sqrt($stdv/($n-1))/sqrt($n)] 
+  return $stdv
+}
+
+mol new /project/freed/esmael/infinite_loop_2lmp/2LMP-40-chain-a-r-refined-aligned-solvate-ionized.psf waitfor all
+mol addfile ../NPT_cont/2lmp/2lmp-inf-NPT-cont-wrap.dcd waitfor all
+set molids {}
+lappend molids [molinfo top]
+align "protein and backbone" [lindex $molids 0]
+mol new /project/freed/esmael/infinite_loop_2lmp/2LMP-40-chain-a-r-refined-aligned-solvate-ionized.psf waitfor all
+mol addfile ../NPT_cont/2lmp/2lmp-inf-NPT-cont.dcd waitfor all
+lappend molids [molinfo top]
+align "protein and backbone" [lindex $molids 1]
+
+set abeg 0
+set aend 19999
+set wind_size_list "20 20 20 20 20"
+set next_ref_list "15 25 30 70 120"
+
+#set wind_size 500
+##set next_ref 250
+
+set wind_and_ref_list {}
+for {set i 0} {$i < [llength $wind_size_list]} {incr i} {
+	lappend wind_and_ref_list [lindex $wind_size_list $i]
+	lappend wind_and_ref_list [lindex $next_ref_list $i]
+	}
+
+# pore radius
+set rad 10
+set rad2 [expr pow($rad,2)]
+# shell thickness and number of shells
+set thickness 0.1
+set nshells [expr $rad/$thickness]
+# remove existing data 
+for {set i 1} {$i <= $nshells} {incr i} {
+  file delete -force "shell${i}"
+}
+
+set all_shells [eveccreate [expr $aend + 1]]; list
+
+# loop over selected time origins with next_ref gap between them and for
+# wind_size frames to get ensemble average of MSD for each lag time in wind_size_list for each shell
+for {set nshell 1} {$nshell <= $nshells} {incr nshell} {
+  foreach {j k} $wind_and_ref_list {
+      	puts "$j $k"
+      	set wind_size $j
+     	set next_ref $k
+        set gap [expr {$next_ref - $wind_size}]
+    # initialize containers for MSD averaged over windows
+    set MSDx [veccreate $wind_size]
+    set MSDy [veccreate $wind_size]
+    set MSDz [veccreate $wind_size]
+    # initialize list for MSD at each window (for stdv calc)
+    set preMSDx {}
+    set preMSDy {}
+    set preMSDz {}
+    set num_wind 0
+    # set radii for shell 1 A thick
+    set rIn [expr {($nshell-1)*$thickness}]
+    set rOut [expr {$nshell*$thickness}]
+    for {set i $abeg} {$i <= $aend - $wind_size}  {incr i $next_ref} {
+		# set water wrap traj to top
+		#mol top [lindex $molids 0]
+		# define central core at current frame
+		#set selz [atomselect top "protein and noh" frame $i]
+		# measure center of core
+		#set cent [measure center $selz]
+		# get indices of protein pore molecules
+		#set pore_ids [$selz get index]
+		# get minmax of protein selection
+		#set mm [measure minmax $selz]
+		#set amax [absmax $mm]
+		#set max_band [expr {[absmax $mm] + $rOut}] 
+		# delete core sel
+		#$selz delete
+		# get x and y components of core center
+		#set cx [lindex $cent 0]
+		#set cy [lindex $cent 1]
+		# set last frame for this window
+		set last [expr {$i + $wind_size}]
+		# get waters in core based on location in water-wrapped traj and update
+		# set sel [atomselect top "name OH2 and (sqr(x-$cx) + sqr(y-$cy) <= $rIn2) and (sqr(x-$cx) + sqr(y-$cy) >= $rOut2)" frame $i]
+		if {[llength [lindex $all_shells $i]] == 0} {
+			puts "generated shells"
+			set shell [shells $i $rad $thickness]
+			lset all_shells $i $shell
+		}
+		set shell_n [lindex [lindex $all_shells $i] [expr $nshell - 1]]
+		puts $shell_n
+		if {[llength $shell_n] > 0} {
+		  puts "nonempty shell"
+		  # get previously determined core waters in unwrapped traj and update
+		  mol top [lindex $molids 1]
+		  set sel1 [atomselect top "index $shell_n" frame $i]	
+		  # write off dcd of core waters from unwrapped traj
+		  animate write dcd $i-$last.dcd beg $i end $last waitfor all sel $sel1 [molinfo top] 
+		  $sel1 writepsf $i-$last.psf 
+		  # load the water traj
+		  mol new $i-$last.psf waitfor all
+		  mol addfile $i-$last.dcd waitfor all
+		  # get diffusion in x, y and z
+		  puts "diffusing"
+		  lappend preMSDx [diffusion 0 0 $wind_size $wind_size 1]
+		  lappend preMSDy [diffusion 1 0 $wind_size $wind_size 1]
+		  lappend preMSDz [diffusion 2 0 $wind_size $wind_size 1]
+		  puts "diffused"
+		  set MSDx [vecadd $MSDx [lindex $preMSDx end]]
+		  set MSDy [vecadd $MSDy [lindex $preMSDy end]]
+		  set MSDz [vecadd $MSDz [lindex $preMSDz end]]
+		  set num_wind [expr $num_wind + 1]
+		  # cleanup
+		  $sel1 delete
+		  mol delete top
+		  file delete $i-$last.dcd
+		  file delete $i-$last.psf
+	  	}
+      }
+      if {$num_wind > 1} {
+	set MSDx [vecscale $MSDx [expr {1.0/$num_wind}]]
+	set MSDy [vecscale $MSDy [expr {1.0/$num_wind}]]
+	set MSDz [vecscale $MSDz [expr {1.0/$num_wind}]]
+	# put preMSD at each lag time into own list
+	# and calculate standard error
+	set stdvX {} 
+	set stdvY {}
+	set stdvZ {}
+	for {set i 0} {$i < $wind_size} {incr i} {
+	  set Lx {}
+	  set Ly {}
+	  set Lz {}
+	  for {set j 0} {$j < $num_wind} {incr j} {
+	    lappend Lx [lindex [lindex $preMSDx $j] $i]
+	    lappend Ly [lindex [lindex $preMSDy $j] $i]
+	    lappend Lz [lindex [lindex $preMSDz $j] $i]
+	  }
+	  lappend stdvX [standardError $Lx [lindex $MSDx $i]]
+	  lappend stdvY [standardError $Ly [lindex $MSDy $i]]
+	  lappend stdvZ [standardError $Lz [lindex $MSDz $i]]
+	}
+	# write the msd and standard errors for each axis to folder/file
+	file mkdir "shell${nshell}/tau${wind_size}f${gap}g"
+	set msdXfile "shell${nshell}/tau${wind_size}f${gap}g/unwrap-diff-x_out.txt"
+	set msdYfile "shell${nshell}/tau${wind_size}f${gap}g/unwrap-diff-y_out.txt"
+	set msdZfile "shell${nshell}/tau${wind_size}f${gap}g/unwrap-diff-z_out.txt"
+	set stdvXfile "shell${nshell}/tau${wind_size}f${gap}g/stdev-x_out.txt"
+	set stdvYfile "shell${nshell}/tau${wind_size}f${gap}g/stdev-y_out.txt"
+	set stdvZfile "shell${nshell}/tau${wind_size}f${gap}g/stdev-z_out.txt"
+	set outMSDx [open $msdXfile w]
+	set outMSDy [open $msdYfile w]
+	set outMSDz [open $msdZfile w]
+	set outStdvX [open $stdvXfile w]
+	set outStdvY [open $stdvYfile w]
+	set outStdvZ [open $stdvZfile w]
+	for {set i 0} {$i < $wind_size} {incr i} {
+	      puts $outMSDx [format "%.4f" [lindex $MSDx $i]]
+	      puts $outMSDy [format "%.4f" [lindex $MSDy $i]]
+	      puts $outMSDz [format "%.4f" [lindex $MSDz $i]]
+	      puts $outStdvX [format "%.4f" [lindex $stdvX $i]]
+	      puts $outStdvY [format "%.4f" [lindex $stdvY $i]]
+	      puts $outStdvZ [format "%.4f" [lindex $stdvZ $i]]
+	}
+	close $outMSDx
+	close $outMSDy
+	close $outMSDz
+	close $outStdvX
+	close $outStdvY
+	close $outStdvZ
+      }
+    }
+  }
