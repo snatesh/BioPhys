@@ -9,17 +9,15 @@ proc eveccreate {dim} {
 
 #-------------Procedure to create list of lists of shells of increasing distance--------------#
 proc shells {frame max_radius thick} {
-	set prot [atomselect top "protein and noh and resid 32 33 35 40" frame $frame]
+	set water [atomselect top "name OH2" frame $frame]
+	$water update
+	set ids [$water get index]
+	set nummol [llength $ids]
+	set dists {}
+
+	set prot [atomselect top "protein and backbone and noh" frame $frame]
+	$prot update
 	set prot_ids [$prot get index]
-
-	set cen [measure center $prot]
-	set cx [lindex $cen 0]
-	set cy [lindex $cen 1]
-
-	set water [atomselect top "name OH2 and sqr(x-$cx) + sqr(y-$cy) <= 10" frame $frame]
-        set ids [$water get index]
-        set nummol [llength $ids]
-        set dists {}
 
 	# Generate distances from the center
 	foreach {id} $ids {

@@ -1,16 +1,3 @@
-#--------------Procedure to find largest absolute value of minmax result---------------#
-proc absmax {mm} {
-	set max0 0
-	for {set comp 0} {$comp < 2} {incr comp} {
-		for {set subc 0} {$subc < 3} {incr subc} {
-			set val [lindex [lindex $mm $comp] $subc]
-			set abv [expr abs($val)]
-			if {$abv > $max0} {set max0 $abv}
-		}
-	}
-	return $max0
-}
-
 #--------------Procedure to create empty list of lists of size d-----------------------#
 proc eveccreate {d} {
 	set vec {}
@@ -37,20 +24,20 @@ proc standardError {Li L} {
   return $stdv
 }
 
-mol new /project/freed/esmael/infinite_loop_2lmp/2LMP-40-chain-a-r-refined-aligned-solvate-ionized.psf waitfor all
-mol addfile ../NPT_cont/2lmp/2lmp-inf-NPT-cont-wrap.dcd waitfor all
+mol new waterbox-protein-removed-neutralized.psf waitfor all
+mol addfile 1UBQ-wrap.dcd waitfor all
 set molids {}
 lappend molids [molinfo top]
 align "protein and backbone" [lindex $molids 0]
-mol new /project/freed/esmael/infinite_loop_2lmp/2LMP-40-chain-a-r-refined-aligned-solvate-ionized.psf waitfor all
-mol addfile ../NPT_cont/2lmp/2lmp-inf-NPT-cont.dcd waitfor all
+mol new waterbox-protein-removed-neutralized.psf waitfor all
+mol addfile 1UBQ-mini-heatup-equil-concat-NPT-20ns-1ps.dcd waitfor all
 lappend molids [molinfo top]
 align "protein and backbone" [lindex $molids 1]
 
 set abeg 0
-set aend 19999
-set wind_size_list "20 20 20 20 20"
-set next_ref_list "15 25 30 70 120"
+set aend 4999
+set wind_size_list "2 11"
+set next_ref_list "3 12"
 
 #set wind_size 500
 ##set next_ref 250
@@ -62,7 +49,7 @@ for {set i 0} {$i < [llength $wind_size_list]} {incr i} {
 	}
 
 # pore radius
-set rad 10
+set rad 36
 set rad2 [expr pow($rad,2)]
 # shell thickness and number of shells
 set thickness 0.1
@@ -96,7 +83,7 @@ for {set nshell 1} {$nshell <= $nshells} {incr nshell} {
     set rOut [expr {$nshell*$thickness}]
     for {set i $abeg} {$i <= $aend - $wind_size}  {incr i $next_ref} {
 		# set water wrap traj to top
-		#mol top [lindex $molids 0]
+		mol top [lindex $molids 0]
 		# define central core at current frame
 		#set selz [atomselect top "protein and noh" frame $i]
 		# measure center of core
@@ -204,3 +191,4 @@ for {set nshell 1} {$nshell <= $nshells} {incr nshell} {
       }
     }
   }
+
