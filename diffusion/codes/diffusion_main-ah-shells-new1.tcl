@@ -110,7 +110,7 @@ for {set nshell 1} {$nshell <= $nshells} {incr nshell} {
 		}
 		set shell_n [lindex [lindex $all_shells $i] [expr $nshell - 1]]
 		puts $shell_n
-		if {[llength $shell_n] > 0} {
+		if {[llength $shell_n] > 1} {
 		  puts "nonempty shell"
 		  # get previously determined core waters in unwrapped traj and update
 		  mol top [lindex $molids 1]
